@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeeklySync — Project Excel Portal</title>
+  <meta name="theme-color" content="#090d16" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/732/732220.png" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            obsidian: '#090d16',
+            surface: '#111827',
+            card: '#161f33',
+            borderDark: '#243049',
+            accent: '#3b82f6',
+            emeraldAccent: '#10b981'
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- SheetJS for real Excel (.xlsx/.xls/.csv) import & export -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      background-color: #090d16;
+      color: #f3f4f6;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #090d16; }
+    ::-webkit-scrollbar-thumb { background: #243049; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+    td[contenteditable="true"]:focus {
+      outline: 2px solid #3b82f6;
+      background-color: #1e293b;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-blue-600 selection:text-white">
+
+  <!-- ==================== SIGN-IN MODAL ==================== -->
+  <div id="authScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-obsidian/95 backdrop-blur-md p-4">
+    <div class="w-full max-w-md bg-surface border border-borderDark rounded-2xl p-7 shadow-2xl">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
+          <i data-lucide="file-spreadsheet" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight text-white">WeeklySync Portal</h1>
+          <p class="text-xs text-gray-400">Project Weekly Report &amp; Excel Hub</p>
+        </div>
+      </div>
+
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Your Name</label>
+          <input id="userNameInput" type="text" required placeholder="e.g., Sabona Tolasa"
+            class="w-full px-3.5 py-2.5 bg-obsidian border border-borderDark rounded-xl text-sm text-white focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">Select Role</label>
+          <select id="userRoleSelect"
+            class="w-full px-3.5 py-2.5 bg-obsidian border border-borderDark rounded-xl text-sm text-white focus:outline-none focus:border-blue-500">
+            <option value="Manager / Admin">Manager / Admin (Full Edit &amp; Publish)</option>
+            <option value="VP">VP (Executive View &amp; Download)</option>
+            <option value="Director">Director (Executive View &amp; Download)</option>
+            <option value="Team Member">Team Member (View Weekly Tasks)</option>
+          </select>
+        </div>
+
+        <div id="adminPinGroup">
+          <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
+            Admin Passcode <span class="text-gray-500 normal-case">(Default: 2026)</span>
+          </label>
+          <input id="adminPinInput" type="password" placeholder="Enter Admin PIN"
+            class="w-full px-3.5 py-2.5 bg-obsidian border border-borderDark rounded-xl text-sm text-white focus:outline-none focus:border-blue-500" />
+          <p id="pinError" class="hidden text-xs text-red-400 mt-1">Invalid Admin PIN. Try again or select a Viewer role.</p>
+        </div>
+
+        <button type="submit"
+          class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span>Sign In to Workspace</span>
+        </button>
+      </form>
+
+      <div class="mt-5 pt-4 border-t border-borderDark flex items-center justify-between text-xs text-gray-400">
+        <span id="syncStatusBadge" class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Ready (Local + Cloud Sync)
+        </span>
+        <button id="installAppBtn" class="hidden text-blue-400 hover:underline font-medium flex items-center gap-1">
+          <i data-lucide="smartphone" class="w-3.5 h-3.5"></i> Install App
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <div id="appWorkspace" class="hidden flex-1 flex flex-col">
+    <!-- Top Navbar -->
+    <header class="sticky top-0 z-30 bg-surface/90 backdrop-blur border-b border-borderDark px-4 sm:px-6 py-3">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+            <i data-lucide="table" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="font-bold text-base sm:text-lg text-white">WeeklySync</h1>
+              <span id="roleBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30"></span>
+            </div>
+            <p id="lastUpdatedLabel" class="text-[11px] text-gray-400">Last synced: Just now</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-3">
+          <span id="userGreeting" class="hidden md:inline text-xs text-gray-300"></span>
+
+          <button onclick="exportToExcel()"
+            class="px-3 py-1.5 bg-card hover:bg-gray-800 border border-borderDark rounded-lg text-xs font-medium text-gray-200 flex items-center gap-1.5 transition">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>Export .xlsx</span>
+          </button>
+
+          <button id="publishBtn" onclick="saveAndPublish()"
+            class="hidden px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-semibold text-white flex items-center gap-1.5 transition shadow-md shadow-emerald-600/20">
+            <i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i>
+            <span>Publish Report</span>
+          </button>
+
+          <button onclick="logout()"
+            class="p-1.5 text-gray-400 hover:text-white bg-card border border-borderDark rounded-lg transition" title="Switch User / Sign Out">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+      <!-- KPI Cards -->
+      <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div class="bg-surface border border-borderDark rounded-xl p-4">
+          <p class="text-xs text-gray-400">Total Tasks</p>
+          <p id="kpiTotal" class="text-2xl font-bold text-white mt-1">0</p>
+        </div>
+        <div class="bg-surface border border-borderDark rounded-xl p-4">
+          <p class="text-xs text-gray-400">Completed</p>
+          <p id="kpiDone" class="text-2xl font-bold text-emerald-400 mt-1">0</p>
+        </div>
+        <div class="bg-surface border border-borderDark rounded-xl p-4">
+          <p class="text-xs text-gray-400">In Progress / Blocked</p>
+          <p id="kpiActive" class="text-2xl font-bold text-amber-400 mt-1">0</p>
+        </div>
+        <div class="bg-surface border border-borderDark rounded-xl p-4">
+          <p class="text-xs text-gray-400">Overall Completion</p>
+          <p id="kpiAvg" class="text-2xl font-bold text-blue-400 mt-1">0%</p>
+        </div>
+      </section>
+
+      <!-- Admin Toolbar (Hidden for Viewers) -->
+      <section id="adminToolbar" class="hidden bg-surface border border-blue-500/30 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="cursor-pointer px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            <span>Upload Excel (.xlsx / .csv)</span>
+            <input id="excelFileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)" />
+          </label>
+
+          <button onclick="addRow()"
+            class="px-3 py-1.5 bg-card hover:bg-gray-800 border border-borderDark text-gray-200 text-xs font-medium rounded-lg flex items-center gap-1.5 transition">
+            <i data-lucide="plus" class="w-3.5 h-3.5 text-blue-400"></i>
+            <span>Add Task Row</span>
+          </button>
+
+          <button onclick="addSheet()"
+            class="px-3 py-1.5 bg-card hover:bg-gray-800 border border-borderDark text-gray-200 text-xs font-medium rounded-lg flex items-center gap-1.5 transition">
+            <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>New Week Tab</span>
+          </button>
+        </div>
+
+        <button onclick="resetSampleData()"
+          class="px-3 py-1.5 text-xs text-gray-400 hover:text-white underline">
+          Populate Sample Report
+        </button>
+      </section>
+
+      <!-- Sheet Tabs & Filters -->
+      <section class="bg-surface border border-borderDark rounded-xl overflow-hidden shadow-xl">
+        <div class="p-3 sm:p-4 border-b border-borderDark flex flex-wrap items-center justify-between gap-3">
+          <!-- Sheet Tabs -->
+          <div id="sheetTabs" class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0"></div>
+
+          <!-- Search & Status Filter -->
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <div class="relative flex-1 sm:w-56">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5"></i>
+              <input id="searchInput" type="text" placeholder="Search task, owner, notes..." oninput="renderTable()"
+                class="w-full pl-8 pr-3 py-1.5 bg-obsidian border border-borderDark rounded-lg text-xs text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <select id="statusFilter" onchange="renderTable()"
+              class="px-2.5 py-1.5 bg-obsidian border border-borderDark rounded-lg text-xs text-gray-200 focus:outline-none focus:border-blue-500">
+              <option value="ALL">All Status</option>
+              <option value="Done">Done</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Pending">Pending</option>
+              <option value="Blocked">Blocked</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Excel Data Grid -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr id="tableHeadRow" class="bg-obsidian/80 border-b border-borderDark text-[11px] font-semibold uppercase tracking-wider text-gray-400"></tr>
+            </thead>
+            <tbody id="tableBody" class="divide-y divide-borderDark text-xs sm:text-sm"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow-lg"></div>
+
+  <!-- ==================== APP LOGIC & FIREBASE SYNC ==================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // REPLACE WITH YOUR OWN FIREBASE CONFIG FOR MULTI-DEVICE CLOUD SYNC ON RENDER
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const ADMIN_PASSCODE = "2026"; // Change this PIN before deploying publicly
+    const STORAGE_KEY = "weeklysync_workbook_v1";
+
+    let db = null;
+    let reportDocRef = null;
+    let currentUser = null;
+    let activeSheetIndex = 0;
+
+    // Default sample workbook
+    const defaultWorkbook = {
+      updatedAt: new Date().toLocaleString(),
+      updatedBy: "Admin",
+      sheets: [
+        {
+          name: "Week 47 - Core Upgrade",
+          columns: ["Task ID", "Workstream / Task", "Owner", "Priority", "Status", "Progress (%)", "Due Date", "Weekly Notes"],
+          rows: [
+            ["TSK-101", "JDK 21 Runtime Refactoring & Cipher Audit", "Sabona T.", "High", "Done", "100", "2026-11-20", "All legacy APIs migrated and verified."],
+            ["TSK-102", "TAFC to TAFJ UAT Routine Conversion", "Integration Team", "High", "In Progress", "80", "2026-11-25", "Validating batch jobs on WildFly 39."],
+            ["TSK-103", "CBE SuperApp & Birr FT Architecture Sign-off", "Netsi / Core Team", "High", "In Progress", "65", "2026-11-26", "Awaiting Peak TPS metrics confirmation."],
+            ["TSK-104", "ModelBank R26 SQL Server Performance Tuning", "DBA & Infra", "Medium", "Pending", "25", "2026-11-28", "Scheduled after UAT smoke test."]
+          ]
+        },
+        {
+          name: "Week 48 - Next Sprint",
+          columns: ["Task ID", "Workstream / Task", "Owner", "Priority", "Status", "Progress (%)", "Due Date", "Weekly Notes"],
+          rows: [
+            ["TSK-201", "Temenos Explorer 26.0.2 Deployment", "Sabona T.", "High", "Pending", "0", "2026-12-02", "WAR package staged for UAT."]
+          ]
+        }
+      ]
+    };
+
+    let workbook = JSON.parse(localStorage.getItem(STORAGE_KEY)) || structuredClone(defaultWorkbook);
+
+    // Initialize Firebase if real credentials are provided
+    async function initCloudSync() {
+      if (firebaseConfig.apiKey === "YOUR_API_KEY") return;
+      try {
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        db = getFirestore(app);
+        await signInAnonymously(auth);
+        reportDocRef = doc(db, "reports", "weekly_master_report");
+
+        onSnapshot(reportDocRef, (snap) => {
+          if (snap.exists()) {
+            workbook = snap.data();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(workbook));
+            if (activeSheetIndex >= workbook.sheets.length) activeSheetIndex = 0;
+            renderAll();
+            showToast("Live report synced from cloud");
+          }
+        });
+      } catch (err) {
+        console.warn("Running in local mode:", err.message);
+      }
+    }
+
+    initCloudSync();
+
+    // Role selector toggle for Admin PIN
+    const roleSelect = document.getElementById("userRoleSelect");
+    const adminPinGroup = document.getElementById("adminPinGroup");
+    roleSelect.addEventListener("change", () => {
+      adminPinGroup.style.display = roleSelect.value === "Manager / Admin" ? "block" : "none";
+      document.getElementById("pinError").classList.add("hidden");
+    });
+
+    // Sign-In Handler
+    document.getElementById("loginForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = document.getElementById("userNameInput").value.trim();
+      const role = roleSelect.value;
+      const pin = document.getElementById("adminPinInput").value.trim();
+
+      if (role === "Manager / Admin" && pin !== ADMIN_PASSCODE) {
+        document.getElementById("pinError").classList.remove("hidden");
+        return;
+      }
+
+      currentUser = { name, role, isAdmin: role === "Manager / Admin" };
+      document.getElementById("authScreen").classList.add("hidden");
+      document.getElementById("appWorkspace").classList.remove("hidden");
+
+      document.getElementById("userGreeting").textContent = `Signed in as ${name}`;
+      document.getElementById("roleBadge").textContent = role;
+
+      if (currentUser.isAdmin) {
+        document.getElementById("adminToolbar").classList.remove("hidden");
+        document.getElementById("publishBtn").classList.remove("hidden");
+      } else {
+        document.getElementById("adminToolbar").classList.add("hidden");
+        document.getElementById("publishBtn").classList.add("hidden");
+      }
+
+      renderAll();
+    });
+
+    window.logout = () => {
+      currentUser = null;
+      document.getElementById("appWorkspace").classList.add("hidden");
+      document.getElementById("authScreen").classList.remove("hidden");
+    };
+
+    function renderAll() {
+      renderTabs();
+      renderTable();
+      updateKPIs();
+      document.getElementById("lastUpdatedLabel").textContent =
+        `Last updated: ${workbook.updatedAt || "Just now"} by ${workbook.updatedBy || "Admin"}`;
+      lucide.createIcons();
+    }
+
+    function renderTabs() {
+      const container = document.getElementById("sheetTabs");
+      container.innerHTML = "";
+      workbook.sheets.forEach((sheet, idx) => {
+        const btn = document.createElement("button");
+        const active = idx === activeSheetIndex;
+        btn.className = `px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+          active
+            ? "bg-blue-600 text-white shadow"
+            : "bg-obsidian text-gray-400 hover:text-white border border-borderDark"
+        }`;
+        btn.textContent = sheet.name;
+        btn.onclick = () => {
+          activeSheetIndex = idx;
+          renderAll();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    window.renderTable = () => {
+      const sheet = workbook.sheets[activeSheetIndex];
+      const headRow = document.getElementById("tableHeadRow");
+      const tbody = document.getElementById("tableBody");
+      const query = document.getElementById("searchInput").value.toLowerCase();
+      const statusFilter = document.getElementById("statusFilter").value;
+      const isAdmin = currentUser?.isAdmin;
+
+      headRow.innerHTML = sheet.columns
+        .map((col) => `<th class="px-4 py-3 whitespace-nowrap">${col}</th>`)
+        .join("") + (isAdmin ? `<th class="px-4 py-3 text-right">Action</th>` : "");
+
+      tbody.innerHTML = "";
+      sheet.rows.forEach((row, rIdx) => {
+        const rowText = row.join(" ").toLowerCase();
+        const statusVal = row[4] || "";
+        if (query && !rowText.includes(query)) return;
+        if (statusFilter !== "ALL" && statusVal !== statusFilter) return;
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-card/60 transition";
+
+        row.forEach((cell, cIdx) => {
+          const td = document.createElement("td");
+          td.className = "px-4 py-3 align-middle text-gray-200";
+
+          if (cIdx === 4) {
+            // Status Badge / Dropdown
+            if (isAdmin) {
+              const sel = document.createElement("select");
+              sel.className = "bg-obsidian border border-borderDark rounded px-2 py-1 text-xs text-white";
+              ["Done", "In Progress", "Pending", "Blocked"].forEach((st) => {
+                const opt = document.createElement("option");
+                opt.value = st;
+                opt.textContent = st;
+                if (st === cell) opt.selected = true;
+                sel.appendChild(opt);
+              });
+              sel.onchange = (e) => {
+                sheet.rows[rIdx][cIdx] = e.target.value;
+                if (e.target.value === "Done") sheet.rows[rIdx][5] = "100";
+                persistLocal();
+                updateKPIs();
+              };
+              td.appendChild(sel);
+            } else {
+              const colors = {
+                Done: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+                "In Progress": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+                Pending: "bg-gray-500/15 text-gray-300 border-gray-500/30",
+                Blocked: "bg-red-500/15 text-red-400 border-red-500/30"
+              };
+              td.innerHTML = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${colors[cell] || colors.Pending}">${cell}</span>`;
+            }
+          } else if (cIdx === 5) {
+            // Progress Bar + Editable %
+            const pct = Math.min(100, Math.max(0, parseInt(cell) || 0));
+            td.innerHTML = `
+              <div class="flex items-center gap-2 min-w-[110px]">
+                <div class="flex-1 h-1.5 bg-obsidian rounded-full overflow-hidden">
+                  <div class="h-full bg-emerald-500" style="width:${pct}%"></div>
+                </div>
+                <span ${isAdmin ? 'contenteditable="true"' : ""} class="text-xs font-mono text-gray-300 px-1">${pct}</span>%
+              </div>`;
+            if (isAdmin) {
+              const span = td.querySelector("span");
+              span.onblur = () => {
+                sheet.rows[rIdx][cIdx] = span.textContent.replace(/\D/g, "") || "0";
+                persistLocal();
+                renderTable();
+                updateKPIs();
+              };
+            }
+          } else {
+            td.textContent = cell;
+            if (isAdmin) {
+              td.setAttribute("contenteditable", "true");
+              td.onblur = () => {
+                sheet.rows[rIdx][cIdx] = td.textContent.trim();
+                persistLocal();
+              };
+            }
+          }
+          tr.appendChild(td);
+        });
+
+        if (isAdmin) {
+          const actionTd = document.createElement("td");
+          actionTd.className = "px-4 py-3 text-right";
+          actionTd.innerHTML = `<button class="text-gray-500 hover:text-red-400 transition" title="Delete Row"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+          actionTd.querySelector("button").onclick = () => {
+            sheet.rows.splice(rIdx, 1);
+            persistLocal();
+            renderAll();
+          };
+          tr.appendChild(actionTd);
+        }
+
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    };
+
+    function updateKPIs() {
+      const rows = workbook.sheets[activeSheetIndex].rows;
+      const total = rows.length;
+      const done = rows.filter((r) => (r[4] || "").toLowerCase() === "done").length;
+      const active = total - done;
+      const avg = total
+        ? Math.round(rows.reduce((sum, r) => sum + (parseInt(r[5]) || 0), 0) / total)
+        : 0;
+
+      document.getElementById("kpiTotal").textContent = total;
+      document.getElementById("kpiDone").textContent = done;
+      document.getElementById("kpiActive").textContent = active;
+      document.getElementById("kpiAvg").textContent = `${avg}%`;
+    }
+
+    function persistLocal() {
+      workbook.updatedAt = new Date().toLocaleString();
+      workbook.updatedBy = currentUser?.name || "Admin";
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(workbook));
+    }
+
+    window.saveAndPublish = async () => {
+      persistLocal();
+      if (reportDocRef) {
+        try {
+          await setDoc(reportDocRef, workbook);
+          showToast("Published live to all viewers!");
+        } catch (err) {
+          showToast("Saved locally (check Firebase rules for cloud sync)");
+        }
+      } else {
+        showToast("Saved locally! Add Firebase keys in index.html for multi-device sync.");
+      }
+      renderAll();
+    };
+
+    window.addRow = () => {
+      const sheet = workbook.sheets[activeSheetIndex];
+      const nextNum = 101 + sheet.rows.length;
+      sheet.rows.push([`TSK-${nextNum}`, "New Weekly Deliverable", "Assignee", "Medium", "Pending", "0", "2026-11-30", "Add notes..."]);
+      persistLocal();
+      renderAll();
+    };
+
+    window.addSheet = () => {
+      const name = prompt("Enter new tab name (e.g., Week 49 Report):");
+      if (!name) return;
+      workbook.sheets.push({
+        name: name.trim(),
+        columns: ["Task ID", "Workstream / Task", "Owner", "Priority", "Status", "Progress (%)", "Due Date", "Weekly Notes"],
+        rows: [["TSK-301", "Initial Kickoff Task", currentUser.name, "High", "Pending", "0", "2026-12-05", ""]]
+      });
+      activeSheetIndex = workbook.sheets.length - 1;
+      persistLocal();
+      renderAll();
+    };
+
+    window.resetSampleData = () => {
+      workbook = structuredClone(defaultWorkbook);
+      activeSheetIndex = 0;
+      persistLocal();
+      renderAll();
+      showToast("Sample weekly report populated");
+    };
+
+    // Upload real Excel (.xlsx, .xls, .csv)
+    window.handleExcelUpload = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+        const parsedSheets = wb.SheetNames.map((sheetName) => {
+          const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
+          const columns = aoa[0] && aoa[0].length ? aoa[0].map(String) : ["Column 1", "Column 2"];
+          const rows = aoa.slice(1).filter((r) => r.some((cell) => String(cell).trim() !== "")).map((r) =>
+            columns.map((_, i) => (r[i] !== undefined ? String(r[i]) : ""))
+          );
+          return { name: sheetName, columns, rows };
+        });
+
+        if (parsedSheets.length) {
+          workbook.sheets = parsedSheets;
+          activeSheetIndex = 0;
+          persistLocal();
+          renderAll();
+          showToast(`Imported "${file.name}" (${parsedSheets.length} sheet(s))`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    // Export current multi-sheet workbook back to .xlsx
+    window.exportToExcel = () => {
+      const wb = XLSX.utils.book_new();
+      workbook.sheets.forEach((s) => {
+        const wsData = [s.columns, ...s.rows];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
+      });
+      XLSX.writeFile(wb, `Weekly_Project_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+
+    function showToast(msg) {
+      const toast = document.getElementById("toast");
+      toast.textContent = msg;
+      toast.classList.remove("hidden");
+      setTimeout(() => toast.classList.add("hidden"), 3200);
+    }
+
+    // Register Service Worker & PWA Install Prompt
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    let deferredPrompt;
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btn = document.getElementById("installAppBtn");
+      btn.classList.remove("hidden");
+      btn.onclick = async () => {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        btn.classList.add("hidden");
+      };
+    });
+
+    lucide.createIcons();
+  </script>
+</body>
+</html>

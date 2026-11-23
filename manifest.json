@@ -1,0 +1,25 @@
+{
+  "name": "WeeklySync — Project Excel Portal",
+  "short_name": "WeeklySync",
+  "description": "Role-based weekly project task & Excel reporting portal for Admin, VP, Director, and Team Members.",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/732/732220.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/732/732220.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
