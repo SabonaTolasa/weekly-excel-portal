@@ -1,4 +1,4 @@
-const CACHE_NAME = 'weeklysync-portal-v2';
+const CACHE_NAME = 'weeklysync-portal-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
