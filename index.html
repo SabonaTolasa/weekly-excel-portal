@@ -104,7 +104,7 @@
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           Ready (Local + Cloud Sync)
         </span>
-        <span class="text-gray-500">v1.2 Mobile Ready</span>
+        <span class="text-gray-500">v1.3 Persistent Session</span>
       </div>
     </div>
   </div>
@@ -143,8 +143,9 @@
           </button>
 
           <button onclick="logout()"
-            class="p-1.5 text-gray-400 hover:text-white bg-card border border-borderDark rounded-lg transition" title="Switch User / Sign Out">
-            <i data-lucide="log-out" class="w-4 h-4"></i>
+            class="px-2.5 py-1.5 text-xs text-gray-300 hover:text-white bg-card border border-borderDark rounded-lg flex items-center gap-1.5 transition" title="Sign Out">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </div>
@@ -272,12 +273,13 @@
   <!-- Toast Notification -->
   <div id="toast" class="fixed bottom-16 right-5 z-50 hidden px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow-lg"></div>
 
-  <!-- ==================== APP LOGIC & FIREBASE SYNC ==================== -->
+  <!-- ==================== APP LOGIC, SESSION PERSISTENCE & FIREBASE SYNC ==================== -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+    // REPLACE WITH YOUR OWN FIREBASE CONFIG FOR MULTI-DEVICE CLOUD SYNC ON RENDER
     const firebaseConfig = {
       apiKey: "YOUR_API_KEY",
       authDomain: "YOUR_PROJECT.firebaseapp.com",
@@ -289,6 +291,7 @@
 
     const ADMIN_PASSCODE = "2026";
     const STORAGE_KEY = "weeklysync_workbook_v1";
+    const SESSION_KEY = "weeklysync_user_session_v1";
 
     let db = null;
     let reportDocRef = null;
@@ -335,7 +338,7 @@
             workbook = snap.data();
             localStorage.setItem(STORAGE_KEY, JSON.stringify(workbook));
             if (activeSheetIndex >= workbook.sheets.length) activeSheetIndex = 0;
-            renderAll();
+            if (currentUser) renderAll();
             showToast("Live report synced from cloud");
           }
         });
@@ -353,6 +356,25 @@
       document.getElementById("pinError").classList.add("hidden");
     });
 
+    function applyUserSession(user) {
+      currentUser = user;
+      document.getElementById("authScreen").classList.add("hidden");
+      document.getElementById("appWorkspace").classList.remove("hidden");
+
+      document.getElementById("userGreeting").textContent = `Signed in as ${user.name}`;
+      document.getElementById("roleBadge").textContent = user.role;
+
+      if (currentUser.isAdmin) {
+        document.getElementById("adminToolbar").classList.remove("hidden");
+        document.getElementById("publishBtn").classList.remove("hidden");
+      } else {
+        document.getElementById("adminToolbar").classList.add("hidden");
+        document.getElementById("publishBtn").classList.add("hidden");
+      }
+
+      renderAll();
+    }
+
     document.getElementById("loginForm").addEventListener("submit", (e) => {
       e.preventDefault();
       const name = document.getElementById("userNameInput").value.trim();
@@ -364,29 +386,27 @@
         return;
       }
 
-      currentUser = { name, role, isAdmin: role === "Manager / Admin" };
-      document.getElementById("authScreen").classList.add("hidden");
-      document.getElementById("appWorkspace").classList.remove("hidden");
-
-      document.getElementById("userGreeting").textContent = `Signed in as ${name}`;
-      document.getElementById("roleBadge").textContent = role;
-
-      if (currentUser.isAdmin) {
-        document.getElementById("adminToolbar").classList.remove("hidden");
-        document.getElementById("publishBtn").classList.remove("hidden");
-      } else {
-        document.getElementById("adminToolbar").classList.add("hidden");
-        document.getElementById("publishBtn").classList.add("hidden");
-      }
-
-      renderAll();
+      const sessionData = { name, role, isAdmin: role === "Manager / Admin" };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+      applyUserSession(sessionData);
     });
 
     window.logout = () => {
       currentUser = null;
+      localStorage.removeItem(SESSION_KEY);
       document.getElementById("appWorkspace").classList.add("hidden");
       document.getElementById("authScreen").classList.remove("hidden");
     };
+
+    // Restore session automatically on refresh
+    const savedSession = localStorage.getItem(SESSION_KEY);
+    if (savedSession) {
+      try {
+        applyUserSession(JSON.parse(savedSession));
+      } catch {
+        localStorage.removeItem(SESSION_KEY);
+      }
+    }
 
     function renderAll() {
       renderTabs();
